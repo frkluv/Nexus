@@ -281,7 +281,14 @@ var buzz=function(p){try{if(navigator.vibrate)navigator.vibrate(p)}catch(e){}};
 var cmpShift=function(a,b){return a.date.localeCompare(b.date)||(a.from||'').localeCompare(b.from||'')};
 
 /* ---------- данные ---------- */
-var KEY='ritm_v1';
+/* Пользовательское локальное хранилище: разные Telegram-аккаунты на одном устройстве не видят данные друг друга. */
+var TG=(window.Telegram&&window.Telegram.WebApp)||null;
+var TGUSER=(TG&&TG.initDataUnsafe&&TG.initDataUnsafe.user)||null;
+var TGID=TGUSER&&TGUSER.id?String(TGUSER.id):'';
+var KEY=TGID?('ritm_v2_'+TGID):('ritm_v2_guest_'+Math.random().toString(36).slice(2));
+var CLOUD_PREFIX=TGID?('v2_'+TGID+'_'):'v2_guest_';
+var CK_META=CLOUD_PREFIX+'meta';
+function cid(i){return CLOUD_PREFIX+'s'+i;}
 function defState(){return{v:1,ts:0,jobs:[],shifts:[],tasks:[],tx:[],debts:[],shop:[],notes:[],goals:[],rec:[],
   player:{xp:0,streak:0,last:null,txd:null,txc:0,stats:{labor:0,disc:0,wealth:0}},
   settings:{theme:'dark',colors:{}}}}
@@ -393,7 +400,6 @@ function toast(m){
 }
 
 /* ---------- облако (Telegram CloudStorage) ---------- */
-var TG=(window.Telegram&&window.Telegram.WebApp)||null;
 var CH=3800;
 var CLOUD={on:false,state:'off',timer:null,busy:false,dirty:false,ready:false,want:false,last:{},n:0};
 function syncText(){
@@ -407,7 +413,6 @@ function setSync(st){
   var el=$('#sy');if(el)el.className='sy '+(CLOUD.state==='off'?'':CLOUD.state);
   var t=$('#synctxt');if(t)t.textContent=syncText();
 }
-var cid=function(i){return 's'+i};
 function chunkStr(str){
   var out=[],i=0;
   while(i<str.length){
@@ -425,9 +430,9 @@ function csGetItems(keys){return tgCall(function(cb){TG.CloudStorage.getItems(ke
 function csRemove(keys){return tgCall(function(cb){TG.CloudStorage.removeItems?TG.CloudStorage.removeItems(keys,cb):TG.CloudStorage.removeItem(keys[0],cb)})}
 async function pullCloud(){
   var keys=await csGetKeys();
-  if(keys.indexOf('meta')===-1){CLOUD.n=0;return 'empty'}
-  var vals=await csGetItems(['meta']);
-  var meta;try{meta=JSON.parse(vals.meta)}catch(e){CLOUD.n=0;return 'empty'}
+  if(keys.indexOf(CK_META)===-1){CLOUD.n=0;return 'empty'}
+  var vals=await csGetItems([CK_META]);
+  var meta;try{meta=JSON.parse(vals[CK_META])}catch(e){CLOUD.n=0;return 'empty'}
   CLOUD.n=+meta.n||0;
   var newer=(+meta.ts||0)>(S.ts||0)||FRESH;
   if(!newer){if((S.ts||0)>(+meta.ts||0))CLOUD.want=true;return 'local'}
@@ -466,7 +471,7 @@ async function pushCloud(){
       var rm=[];for(i=ch.length;i<CLOUD.n;i++){rm.push(cid(i));delete CLOUD.last[cid(i)]}
       await csRemove(rm);
     }
-    await csSet('meta',JSON.stringify({ts:ts,n:ch.length}));
+    await csSet(CK_META,JSON.stringify({ts:ts,n:ch.length}));
     CLOUD.n=ch.length;
     setSync('ok');
   }catch(e){failed=true;setSync('err')}
