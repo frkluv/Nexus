@@ -201,6 +201,10 @@ input[type=color]{width:48px;height:34px;border:0;background:none;padding:0;bord
 .ur.late .s{color:var(--exp)}
 .up .lbl{margin-bottom:6px}
 .card .row{background:var(--surface2);border-color:transparent}
+.row,.job,.chip,.ib,.d,.chk{transition:background-color .16s,border-color .16s,color .16s,transform .12s}
+.row:active,.job:active,.d:active{transform:scale(.97)}
+.chip:active{transform:scale(.94)}
+.ib:active{transform:scale(.9)}
 @keyframes up{from{transform:translateY(100%)}}
 @keyframes fade{from{opacity:0}}
 @keyframes rise{from{opacity:0;transform:translateY(10px)}}
@@ -276,19 +280,12 @@ var sum=function(a){return a.reduce(function(x,y){return x+y},0)};
 var groupBy=function(a,k){var o={};a.forEach(function(x){(o[x[k]]=o[x[k]]||[]).push(x)});return o};
 var tmin=function(t){if(!t)return null;var p=t.split(':').map(Number);return p[0]*60+p[1]};
 function spanH(f,t){var a=tmin(f),b=tmin(t);if(a==null||b==null)return 0;var d=b-a;if(d<0)d+=1440;return d/60}
-var earned=function(s){return s.kind==='fixed'?num(s.rate):num(s.paid)*num(s.rate)};
+var earned=function(s){return s.total!=null?num(s.total):(s.kind==='fixed'?num(s.rate):num(s.paid)*num(s.rate))};
 var buzz=function(p){try{if(navigator.vibrate)navigator.vibrate(p)}catch(e){}};
 var cmpShift=function(a,b){return a.date.localeCompare(b.date)||(a.from||'').localeCompare(b.from||'')};
 
 /* ---------- данные ---------- */
-/* Пользовательское локальное хранилище: разные Telegram-аккаунты на одном устройстве не видят данные друг друга. */
-var TG=(window.Telegram&&window.Telegram.WebApp)||null;
-var TGUSER=(TG&&TG.initDataUnsafe&&TG.initDataUnsafe.user)||null;
-var TGID=TGUSER&&TGUSER.id?String(TGUSER.id):'';
-var KEY=TGID?('ritm_v2_'+TGID):('ritm_v2_guest_'+Math.random().toString(36).slice(2));
-var CLOUD_PREFIX=TGID?('v2_'+TGID+'_'):'v2_guest_';
-var CK_META=CLOUD_PREFIX+'meta';
-function cid(i){return CLOUD_PREFIX+'s'+i;}
+var KEY='ritm_v1';
 function defState(){return{v:1,ts:0,jobs:[],shifts:[],tasks:[],tx:[],debts:[],shop:[],notes:[],goals:[],rec:[],
   player:{xp:0,streak:0,last:null,txd:null,txc:0,stats:{labor:0,disc:0,wealth:0}},
   settings:{theme:'dark',colors:{}}}}
@@ -400,6 +397,7 @@ function toast(m){
 }
 
 /* ---------- облако (Telegram CloudStorage) ---------- */
+var TG=(window.Telegram&&window.Telegram.WebApp)||null;
 var CH=3800;
 var CLOUD={on:false,state:'off',timer:null,busy:false,dirty:false,ready:false,want:false,last:{},n:0};
 function syncText(){
@@ -413,6 +411,7 @@ function setSync(st){
   var el=$('#sy');if(el)el.className='sy '+(CLOUD.state==='off'?'':CLOUD.state);
   var t=$('#synctxt');if(t)t.textContent=syncText();
 }
+var cid=function(i){return 's'+i};
 function chunkStr(str){
   var out=[],i=0;
   while(i<str.length){
@@ -430,9 +429,9 @@ function csGetItems(keys){return tgCall(function(cb){TG.CloudStorage.getItems(ke
 function csRemove(keys){return tgCall(function(cb){TG.CloudStorage.removeItems?TG.CloudStorage.removeItems(keys,cb):TG.CloudStorage.removeItem(keys[0],cb)})}
 async function pullCloud(){
   var keys=await csGetKeys();
-  if(keys.indexOf(CK_META)===-1){CLOUD.n=0;return 'empty'}
-  var vals=await csGetItems([CK_META]);
-  var meta;try{meta=JSON.parse(vals[CK_META])}catch(e){CLOUD.n=0;return 'empty'}
+  if(keys.indexOf('meta')===-1){CLOUD.n=0;return 'empty'}
+  var vals=await csGetItems(['meta']);
+  var meta;try{meta=JSON.parse(vals.meta)}catch(e){CLOUD.n=0;return 'empty'}
   CLOUD.n=+meta.n||0;
   var newer=(+meta.ts||0)>(S.ts||0)||FRESH;
   if(!newer){if((S.ts||0)>(+meta.ts||0))CLOUD.want=true;return 'local'}
@@ -471,7 +470,7 @@ async function pushCloud(){
       var rm=[];for(i=ch.length;i<CLOUD.n;i++){rm.push(cid(i));delete CLOUD.last[cid(i)]}
       await csRemove(rm);
     }
-    await csSet(CK_META,JSON.stringify({ts:ts,n:ch.length}));
+    await csSet('meta',JSON.stringify({ts:ts,n:ch.length}));
     CLOUD.n=ch.length;
     setSync('ok');
   }catch(e){failed=true;setSync('err')}
@@ -527,6 +526,16 @@ var empty=function(t){return '<div class="empty"><div class="dd">•••</div>
 function mhead(k,label){
   return '<div class="cal-h"><button class="ib" data-act="mnav" data-k="'+k+'" data-n="-1" aria-label="Назад">'+ic('l')+'</button><div class="m">'+label+'</div><button class="ib" data-act="mnav" data-k="'+k+'" data-n="1" aria-label="Вперёд">'+ic('r')+'</button></div>';
 }
+function animateCounters(root){
+  if(!root||!root.querySelectorAll||!window.requestAnimationFrame)return;
+  var els=root.querySelectorAll('[data-cnt]');
+  els.forEach(function(el){
+    var target=parseFloat(el.dataset.cnt)||0,signed=el.dataset.signed==='1',t0=null,dur=650;
+    function fmt(v){return signed?((v<0?'−':'')+nf.format(Math.abs(r2(v)))+' ₽'):(nf.format(r2(v))+' ₽')}
+    function step(ts){if(!t0)t0=ts;var p=Math.min(1,(ts-t0)/dur);var eased=1-Math.pow(1-p,3);el.textContent=fmt(target*eased);if(p<1)requestAnimationFrame(step)}
+    requestAnimationFrame(step);
+  });
+}
 function render(anim){
   document.querySelectorAll('nav button').forEach(function(b){b.classList.toggle('on',b.dataset.tab===U.tab)});
   var v=$('#view');
@@ -534,13 +543,23 @@ function render(anim){
   v.classList.remove('enter');
   if(anim){void v.offsetWidth;v.classList.add('enter')}
   $('#fab').style.display=(U.tab==='shop'&&U.shopMode==='list')?'none':'grid';
+  animateCounters(v);
+}
+function shiftSub(s){
+  if(s.kind==='custom'){
+    var job=jobById(s.jobId),parts=[];
+    if(job&&s.presetId){var p=(job.presets||[]).find(function(x){return x.id===s.presetId});if(p)parts.push(p.name)}
+    if(job&&s.extraIds&&s.extraIds.length)(job.extras||[]).forEach(function(x){if(s.extraIds.indexOf(x.id)>-1)parts.push('+'+x.name)});
+    return parts.length?parts.join(', '):'без вариантов';
+  }
+  return esc(s.from||'--:--')+'–'+esc(s.to||'--:--')+(s.kind==='fixed'?' · фикс':' · '+hrs(num(s.paid)));
 }
 function shiftRow(s,withDate){
   var e=earned(s),d=parseYmd(s.date);
   return '<div class="row'+(s.done?' done':'')+'" data-act="editShift" data-id="'+s.id+'">'
     +(withDate?'<div class="dcol"><b>'+d.getDate()+'</b><span>'+WD[d.getDay()]+'</span></div>':'')
     +'<button class="chk'+(s.done?' on':'')+'" data-act="toggleShift" data-id="'+s.id+'" aria-label="Отработана">'+ic('chk')+'</button>'
-    +'<div class="grow"><div class="t">'+esc(s.jobName)+'</div><div class="s">'+esc(s.from||'--:--')+'–'+esc(s.to||'--:--')+(s.kind==='fixed'?' · фикс':' · '+hrs(num(s.paid)))+'</div></div>'
+    +'<div class="grow"><div class="t">'+esc(s.jobName)+'</div><div class="s">'+shiftSub(s)+'</div></div>'
     +'<div class="amt '+(s.done?'pos':'')+'">'+(s.done?'+':'≈ ')+money(e)+'</div></div>';
 }
 function taskRow(t){
@@ -635,9 +654,9 @@ function vShifts(){
   var by={};
   done.forEach(function(s){var o=by[s.jobName]||(by[s.jobName]={h:0,m:0});o.h+=num(s.paid);o.m+=earned(s)});
   var byHtml=Object.keys(by).map(function(n){return '<div class="jr"><span>'+esc(n)+'</span><span>'+hrs(by[n].h)+' · '+money(by[n].m)+'</span></div>'}).join('');
-  var jobsHtml=S.jobs.map(function(j){return '<button class="job" data-act="editJob" data-id="'+j.id+'"><div class="t">'+esc(j.name)+'</div><div class="s">'+money(num(j.rate))+(j.kind==='fixed'?' за смену':' в час')+'</div></button>'}).join('');
+  var jobsHtml=S.jobs.map(function(j){return '<button class="job" data-act="editJob" data-id="'+j.id+'"><div class="t">'+esc(j.name)+'</div><div class="s">'+jobSubtitle(j)+'</div></button>'}).join('');
   return '<div class="card">'+mhead('smonth',MON[m.getMonth()]+' '+m.getFullYear())
-    +'<div class="lbl">заработано</div><div class="big">'+nf.format(r2(got))+' ₽</div>'
+    +'<div class="lbl">заработано</div><div class="big" data-cnt="'+r2(got)+'">0 ₽</div>'
     +'<div class="two2"><div><div class="lbl">оплачено часов</div><div class="v">'+nf.format(r2(hh))+'</div></div><div><div class="lbl">смен отработано</div><div class="v">'+done.length+'</div></div></div>'
     +(plan.length?'<div class="s" style="margin-top:12px">Впереди '+plan.length+' смен, это ещё ≈ '+money(soon)+'</div>':'')
     +(byHtml?'<div style="margin-top:14px">'+byHtml+'</div>':'')+'</div>'
@@ -670,7 +689,7 @@ function opsHtml(){
     return '<div class="row" data-act="'+(t.auto?'editShift':'editTx')+'" data-id="'+(t.auto?t.shiftId:t.id)+'"><div class="grow"><div class="t">'+esc(t.cat||'Другое')+(t.auto?'<span class="tag">авто</span>':'')+'</div><div class="s">'+dd(t.date)+(t.note?' · '+esc(t.note):'')+'</div></div><div class="amt '+(isInc?'pos':'neg')+'">'+(isInc?'+':'−')+money(t.amount)+'</div></div>';
   }).join('');
   return '<div class="card" style="margin-top:8px">'+mhead('mmonth',MON[m.getMonth()]+' '+m.getFullYear())
-    +'<div class="lbl">баланс за месяц</div><div class="big '+(bal<0?'neg':'')+'">'+(bal<0?'−':'')+nf.format(Math.abs(r2(bal)))+' ₽</div>'
+    +'<div class="lbl">баланс за месяц</div><div class="big '+(bal<0?'neg':'')+'" data-cnt="'+r2(bal)+'" data-signed="1">0 ₽</div>'
     +'<div class="two2"><div><div class="lbl">доход</div><div class="v pos">+'+money(inc)+'</div></div><div><div class="lbl">расход</div><div class="v neg">−'+money(exp)+'</div></div></div></div>'
     +recCard(k)+catHtml+'<div class="list">'+(rows||empty('Операций нет'))+'</div>';
 }
@@ -746,60 +765,126 @@ function taskSheet(id,date){
     +'<div class="btns"><button class="btn pri" data-act="saveTask">Сохранить</button>'+(t?'<button class="btn ghost" data-act="delTask">Удалить</button>':'')+'</div>');
   setTimeout(function(){var e=$('#f_title');if(e&&!t)e.focus()},250);
 }
+function jobSubtitle(j){
+  if(j.kind==='custom'){
+    var pc=(j.presets||[]).length,ec=(j.extras||[]).length;
+    var parts=[];if(pc)parts.push(pc+' вариант(а/ов)');if(ec)parts.push(ec+' надбав.');
+    return parts.length?parts.join(' · '):'нет кнопок — задай их';
+  }
+  return money(num(j.rate))+(j.kind==='fixed'?' за смену':' в час');
+}
+function presetsListHtml(){
+  var arr=U.edit.presets||[];
+  if(!arr.length)return '<div class="s" style="font-family:var(--sans);font-size:13px">Пока нет вариантов</div>';
+  return arr.map(function(p){return '<div class="crow"><span>'+esc(p.name)+' · '+money(num(p.amount))+'</span><button class="btn sm ghost" data-act="delPreset" data-id="'+p.id+'">Удалить</button></div>'}).join('');
+}
+function extrasListHtml(){
+  var arr=U.edit.extras||[];
+  if(!arr.length)return '<div class="s" style="font-family:var(--sans);font-size:13px">Пока нет надбавок</div>';
+  return arr.map(function(x){return '<div class="crow"><span>+'+esc(x.name)+' · '+money(num(x.amount))+'</span><button class="btn sm ghost" data-act="delExtra" data-id="'+x.id+'">Удалить</button></div>'}).join('');
+}
+function jobBodyHtml(j){
+  var e=U.edit,custom=e.kind==='custom',d=e.draft||{};
+  var html='<div class="sh-title">'+(j?'Работа':'Новая работа')+'</div>'
+    +fld('Название','<input id="j_name" class="inp" value="'+esc(d.name!=null?d.name:(j?j.name:''))+'" placeholder="Например, Склад" autocomplete="off">')
+    +'<div class="fld"><div class="lbl">Как платят</div><div class="seg" id="kindseg" style="margin-top:6px">'
+    +'<button data-act="jobKind" data-v="hourly" class="'+(e.kind==='hourly'?'on':'')+'">По часам</button>'
+    +'<button data-act="jobKind" data-v="fixed" class="'+(e.kind==='fixed'?'on':'')+'">За смену</button>'
+    +'<button data-act="jobKind" data-v="custom" class="'+(custom?'on':'')+'">По кнопкам</button></div></div>';
+  if(!custom){
+    html+=fld('<span id="j_ratelbl">'+(e.kind==='fixed'?'Оплата за смену, ₽':'Ставка, ₽ в час')+'</span>','<input id="j_rate" class="inp" inputmode="decimal" value="'+(d.rate!=null?d.rate:(j?j.rate:''))+'" placeholder="0">')
+      +'<div class="two">'+fld('Обычно начало','<input id="j_from" type="time" class="inp" value="'+esc(d.from!=null?d.from:(j&&j.from||''))+'">')+fld('Обычно конец','<input id="j_to" type="time" class="inp" value="'+esc(d.to!=null?d.to:(j&&j.to||''))+'">')+'</div>'
+      +'<div class="s" style="margin-top:10px">Ставка подставляется в новые смены. В каждой смене её можно поменять.</div>';
+  }else{
+    html+='<div class="fld"><div class="lbl">Варианты · выбираешь один за смену</div><div id="presetsList">'+presetsListHtml()+'</div>'
+      +'<div class="addrow" style="margin-top:8px;padding:0"><input id="pr_name" class="inp" placeholder="Напр. 2 тотема" autocomplete="off"><input id="pr_amt" class="inp" inputmode="decimal" placeholder="₽"><button class="ib" data-act="addPreset" aria-label="Добавить">'+ic('plus')+'</button></div></div>'
+      +'<div class="fld"><div class="lbl">Надбавки · можно несколько за смену</div><div id="extrasList">'+extrasListHtml()+'</div>'
+      +'<div class="addrow" style="margin-top:8px;padding:0"><input id="ex_name" class="inp" placeholder="Напр. Выход на мафии" autocomplete="off"><input id="ex_amt" class="inp" inputmode="decimal" placeholder="+₽"><button class="ib" data-act="addExtra" aria-label="Добавить">'+ic('plus')+'</button></div></div>'
+      +'<div class="s">Эти кнопки появятся при создании смены для этой работы. Итог всегда можно поправить вручную.</div>';
+  }
+  html+='<div class="btns"><button class="btn pri" data-act="saveJob">Сохранить</button>'+(j?'<button class="btn ghost" data-act="delJob">Удалить</button>':'')+'</div>';
+  return html;
+}
 function jobSheet(id){
   var j=id?jobById(id):null;
-  U.edit={t:'job',id:id||null,kind:j?j.kind:'hourly'};
-  openSheet('<div class="sh-title">'+(j?'Работа':'Новая работа')+'</div>'
-    +fld('Название','<input id="j_name" class="inp" value="'+esc(j?j.name:'')+'" placeholder="Например, Склад" autocomplete="off">')
-    +'<div class="fld"><div class="lbl">Как платят</div><div class="seg" id="kindseg" style="margin-top:6px"><button data-act="jobKind" data-v="hourly" class="'+(U.edit.kind==='hourly'?'on':'')+'">По часам</button><button data-act="jobKind" data-v="fixed" class="'+(U.edit.kind==='fixed'?'on':'')+'">За смену</button></div></div>'
-    +fld('<span id="j_ratelbl">'+(U.edit.kind==='fixed'?'Оплата за смену, ₽':'Ставка, ₽ в час')+'</span>','<input id="j_rate" class="inp" inputmode="decimal" value="'+(j?j.rate:'')+'" placeholder="0">')
-    +'<div class="two">'+fld('Обычно начало','<input id="j_from" type="time" class="inp" value="'+esc(j&&j.from||'')+'">')+fld('Обычно конец','<input id="j_to" type="time" class="inp" value="'+esc(j&&j.to||'')+'">')+'</div>'
-    +'<div class="s" style="margin-top:10px">Ставка подставляется в новые смены. В каждой смене её можно поменять.</div>'
-    +'<div class="btns"><button class="btn pri" data-act="saveJob">Сохранить</button>'+(j?'<button class="btn ghost" data-act="delJob">Удалить</button>':'')+'</div>');
+  U.edit={t:'job',id:id||null,kind:j?j.kind:'hourly',draft:{},presets:(j&&j.presets?j.presets.slice():[]),extras:(j&&j.extras?j.extras.slice():[])};
+  openSheet(jobBodyHtml(j));
   setTimeout(function(){var e=$('#j_name');if(e&&!j)e.focus()},250);
+}
+function presetChips(job,selId){
+  if(!job||!job.presets||!job.presets.length)return '<div class="s" style="font-family:var(--sans);font-size:13px">Нет вариантов. Задай их в настройках этой работы.</div>';
+  return job.presets.map(function(p){return '<button class="chip'+(p.id===selId?' on':'')+'" data-act="pickPreset" data-id="'+p.id+'">'+esc(p.name)+' · '+money(num(p.amount))+'</button>'}).join('');
+}
+function extraChips(job,selIds){
+  if(!job||!job.extras||!job.extras.length)return '';
+  selIds=selIds||[];
+  return job.extras.map(function(x){return '<button class="chip'+(selIds.indexOf(x.id)>-1?' on':'')+'" data-act="pickExtra" data-id="'+x.id+'">+'+esc(x.name)+' · '+money(num(x.amount))+'</button>'}).join('');
+}
+function shiftBodyHtml(s,jid){
+  var e=U.edit,job=jobById(jid)||{},custom=e.kind==='custom';
+  var chips=S.jobs.map(function(x){return '<button class="chip'+(x.id===jid?' on':'')+'" data-act="pickJob" data-id="'+x.id+'">'+esc(x.name)+'</button>'}).join('');
+  if(s&&!jobById(s.jobId))chips='<button class="chip on">'+esc(s.jobName)+'</button>'+chips;
+  var html='<div class="sh-title">'+(s?'Смена':'Новая смена')+'</div>'
+    +'<div class="fld"><div class="lbl">Работа</div><div class="chips" id="jobchips">'+chips+'</div></div>'
+    +fld('Дата','<input id="f_date" type="date" class="inp" value="'+(s?s.date:(U.afterJob2||U.sel))+'">');
+  if(custom){
+    html+='<div class="two">'+fld('Начало (необязательно)','<input id="f_from" type="time" class="inp" value="'+esc((s&&s.from)||job.from||'')+'">')+fld('Конец','<input id="f_to" type="time" class="inp" value="'+esc((s&&s.to)||job.to||'')+'">')+'</div>'
+      +'<div class="fld"><div class="lbl">Вариант</div><div class="chips" id="presetChips">'+presetChips(job,e.presetId)+'</div></div>';
+    if(job.extras&&job.extras.length)html+='<div class="fld"><div class="lbl">Надбавки</div><div class="chips" id="extraChips">'+extraChips(job,e.extraIds)+'</div></div>';
+  }else{
+    var v=s||{from:job.from||'',to:job.to||'',brk:0,paid:(job.from&&job.to)?r2(spanH(job.from,job.to)):'',rate:job.rate,note:''};
+    html+='<div class="two">'+fld('Начало смены','<input id="f_from" type="time" class="inp" data-live="shift" value="'+esc(v.from||'')+'">')+fld('Конец смены','<input id="f_to" type="time" class="inp" data-live="shift" value="'+esc(v.to||'')+'">')+'</div>'
+      +'<div class="two">'+fld('Перерыв, мин','<input id="f_brk" class="inp" inputmode="numeric" data-live="shift" value="'+(v.brk||'')+'" placeholder="0">')+fld('<span id="paidlbl">'+(e.kind==='fixed'?'Часы (для статистики)':'Оплачиваемых часов')+'</span>','<input id="f_paid" class="inp" inputmode="decimal" data-live="paid" value="'+(v.paid===''||v.paid==null?'':v.paid)+'" placeholder="0">')+'</div>'
+      +fld('<span id="ratetxt">'+(e.kind==='fixed'?'Оплата за смену, ₽':'Ставка, ₽ в час')+'</span> <span id="ratebadge" class="acc"></span>','<input id="f_rate" class="inp" inputmode="decimal" data-live="rate" value="'+(v.rate==null?'':v.rate)+'" placeholder="0">');
+  }
+  html+='<div class="fld" style="margin-top:18px"><div class="lbl">Итого за смену, ₽ <span id="totalbadge" class="s" data-act="totalAuto">· авто</span></div><input id="f_total" class="inp" inputmode="decimal" data-live="total" style="font:900 26px var(--dot);padding:12px 16px" value="0"></div>';
+  var noteVal=s?(s.note||''):'';
+  html+=fld('Заметка','<input id="f_note" class="inp" value="'+esc(noteVal)+'" placeholder="Необязательно" autocomplete="off">')
+    +'<div class="tog"><div><div class="t">Отработана</div><div class="s">Засчитать доход и опыт</div></div><button class="switch'+(e.done?' on':'')+'" id="f_done" data-act="tglDone" aria-label="Отработана"></button></div>'
+    +'<div class="btns"><button class="btn pri" data-act="saveShift">Сохранить</button>'+(s?'<button class="btn ghost" data-act="delShift">Удалить</button>':'')+'</div>';
+  return html;
 }
 function shiftSheet(id,date){
   var s=id?S.shifts.find(function(x){return x.id===id}):null;
   if(!s&&!S.jobs.length){
     U.afterJob=date||U.sel;
-    openSheet('<div class="sh-title">Смена</div><div class="s" style="font-family:var(--sans);font-size:14px">Сначала создай работу: название и ставку. Дальше часы и доход считаются сами.</div><div class="btns"><button class="btn pri" data-act="newJob">Создать работу</button></div>');
+    openSheet('<div class="sh-title">Смена</div><div class="s" style="font-family:var(--sans);font-size:14px">Сначала создай работу: название и ставку (или кнопки). Дальше доход считается сам.</div><div class="btns"><button class="btn pri" data-act="newJob">Создать работу</button></div>');
     return;
   }
   var jid=s?s.jobId:S.jobs[0].id;
   var j=jobById(jid)||S.jobs[0]||{};
-  var v=s||{date:date||U.sel,from:j.from||'',to:j.to||'',brk:0,paid:(j.from&&j.to)?r2(spanH(j.from,j.to)):'',rate:j.rate,kind:j.kind,note:'',done:false};
-  U.edit={t:'shift',id:s?s.id:null,jobId:jid,jobName:s?s.jobName:j.name,kind:v.kind,pm:!!s,done:!!v.done};
-  var chips=S.jobs.map(function(x){return '<button class="chip'+(x.id===jid?' on':'')+'" data-act="pickJob" data-id="'+x.id+'">'+esc(x.name)+'</button>'}).join('');
-  if(s&&!jobById(s.jobId))chips='<button class="chip on">'+esc(s.jobName)+'</button>'+chips;
-  openSheet('<div class="sh-title">'+(s?'Смена':'Новая смена')+'</div>'
-    +'<div class="fld"><div class="lbl">Работа</div><div class="chips" id="jobchips">'+chips+'</div></div>'
-    +fld('Дата','<input id="f_date" type="date" class="inp" value="'+v.date+'">')
-    +'<div class="two">'+fld('Начало смены','<input id="f_from" type="time" class="inp" data-live="shift" value="'+esc(v.from||'')+'">')+fld('Конец смены','<input id="f_to" type="time" class="inp" data-live="shift" value="'+esc(v.to||'')+'">')+'</div>'
-    +'<div class="two">'+fld('Перерыв, мин','<input id="f_brk" class="inp" inputmode="numeric" data-live="shift" value="'+(v.brk||'')+'" placeholder="0">')+fld('<span id="paidlbl">'+(v.kind==='fixed'?'Часы (для статистики)':'Оплачиваемых часов')+'</span>','<input id="f_paid" class="inp" inputmode="decimal" data-live="paid" value="'+(v.paid===''?'':v.paid)+'" placeholder="0">')+'</div>'
-    +fld('<span id="ratetxt">'+(v.kind==='fixed'?'Оплата за смену, ₽':'Ставка, ₽ в час')+'</span> <span id="ratebadge" class="acc"></span>','<input id="f_rate" class="inp" inputmode="decimal" data-live="rate" value="'+(v.rate==null?'':v.rate)+'" placeholder="0">')
-    +'<div class="total"><span class="lbl">итого за смену</span><span class="big" id="f_total">0 ₽</span></div>'
-    +fld('Заметка','<input id="f_note" class="inp" value="'+esc(v.note||'')+'" placeholder="Необязательно" autocomplete="off">')
-    +'<div class="tog"><div><div class="t">Отработана</div><div class="s">Засчитать доход и опыт</div></div><button class="switch'+(v.done?' on':'')+'" id="f_done" data-act="tglDone" aria-label="Отработана"></button></div>'
-    +'<div class="btns"><button class="btn pri" data-act="saveShift">Сохранить</button>'+(s?'<button class="btn ghost" data-act="delShift">Удалить</button>':'')+'</div>');
-  shiftCalc();
+  U.afterJob2=date||U.sel;
+  U.edit={t:'shift',id:s?s.id:null,jobId:jid,jobName:s?s.jobName:j.name,kind:s?s.kind:j.kind,pm:!!s,done:!!(s&&s.done),
+    presetId:s?(s.presetId||null):null,extraIds:s&&s.extraIds?s.extraIds.slice():[],totalManual:s?!!s.totalManual:false};
+  openSheet(shiftBodyHtml(s,jid));
+  refreshTotalBadge();
+  if(U.edit.kind==='custom')customCalc();else shiftCalc();
+  if(s){var f=$('#f_total');if(f)f.value=s.total!=null?s.total:0}
+}
+function refreshTotalBadge(){
+  var b=$('#totalbadge');if(!b)return;
+  if(U.edit&&U.edit.totalManual){b.textContent='· своя сумма, сбросить';b.classList.add('acc')}
+  else{b.textContent='· авто';b.classList.remove('acc')}
+}
+function customCalc(){
+  var e=U.edit,job=jobById(e.jobId);if(!job)return;
+  var p=(job.presets||[]).find(function(x){return x.id===e.presetId});
+  var sum=(p?num(p.amount):0)+(job.extras||[]).filter(function(x){return (e.extraIds||[]).indexOf(x.id)>-1}).reduce(function(a,x){return a+num(x.amount)},0);
+  if(!e.totalManual){var f=$('#f_total');if(f)f.value=sum}
 }
 function shiftCalc(){
-  var e=U.edit;if(!e||e.t!=='shift')return;
+  var e=U.edit;if(!e||e.t!=='shift'||e.kind==='custom')return;
   var paid=num($('#f_paid').value),rate=num($('#f_rate').value);
-  $('#f_total').textContent=money(e.kind==='fixed'?rate:paid*rate);
+  var v=e.kind==='fixed'?rate:paid*rate;
   var j=jobById(e.jobId);
-  $('#ratebadge').textContent=(j&&rate!==num(j.rate))?'· своя ставка':'';
+  var rb=$('#ratebadge');if(rb)rb.textContent=(j&&rate!==num(j.rate))?'· своя ставка':'';
+  if(!e.totalManual){var f=$('#f_total');if(f)f.value=v}
 }
 function autoPaid(){
   if(U.edit.pm)return;
   var f=$('#f_from').value,t=$('#f_to').value;if(!f||!t)return;
   var h=Math.max(0,spanH(f,t)-num($('#f_brk').value)/60);
   $('#f_paid').value=r2(h);
-}
-function kindUI(){
-  var fx=U.edit.kind==='fixed';
-  $('#ratetxt').textContent=fx?'Оплата за смену, ₽':'Ставка, ₽ в час';
-  $('#paidlbl').textContent=fx?'Часы (для статистики)':'Оплачиваемых часов';
 }
 var EXPC=['Еда','Покупки','Транспорт','Аренда','Дом','Подписки','Здоровье','Развлечения','Связь','Другое'];
 var INCC=['Подработка','Подарок','Возврат','Другое'];
@@ -971,16 +1056,50 @@ var ACT={
   newJob:function(){jobSheet()},
   editJob:function(el){jobSheet(el.dataset.id)},
   jobKind:function(el){
-    U.edit.kind=el.dataset.v;
-    document.querySelectorAll('#kindseg button').forEach(function(b){b.classList.toggle('on',b.dataset.v===U.edit.kind)});
-    $('#j_ratelbl').textContent=U.edit.kind==='fixed'?'Оплата за смену, ₽':'Ставка, ₽ в час';
+    var e=U.edit;
+    e.draft={name:($('#j_name')&&$('#j_name').value)!=null?$('#j_name').value:e.draft.name,
+      rate:($('#j_rate')?$('#j_rate').value:e.draft.rate),
+      from:($('#j_from')?$('#j_from').value:e.draft.from),
+      to:($('#j_to')?$('#j_to').value:e.draft.to)};
+    e.kind=el.dataset.v;
+    var j=e.id?jobById(e.id):null;
+    var sh=document.querySelector('.sh');
+    if(sh)sh.innerHTML='<div class="grab"></div>'+jobBodyHtml(j);
+  },
+  addPreset:function(){
+    var n=$('#pr_name').value.trim();if(!n)return bad('pr_name');
+    var a=num($('#pr_amt').value);if(!(a>0))return bad('pr_amt');
+    U.edit.presets=U.edit.presets||[];U.edit.presets.push({id:uid(),name:n,amount:a});
+    $('#pr_name').value='';$('#pr_amt').value='';
+    var l=$('#presetsList');if(l)l.innerHTML=presetsListHtml();
+  },
+  delPreset:function(el){
+    U.edit.presets=(U.edit.presets||[]).filter(function(x){return x.id!==el.dataset.id});
+    var l=$('#presetsList');if(l)l.innerHTML=presetsListHtml();
+  },
+  addExtra:function(){
+    var n=$('#ex_name').value.trim();if(!n)return bad('ex_name');
+    var a=num($('#ex_amt').value);if(!(a>0))return bad('ex_amt');
+    U.edit.extras=U.edit.extras||[];U.edit.extras.push({id:uid(),name:n,amount:a});
+    $('#ex_name').value='';$('#ex_amt').value='';
+    var l=$('#extrasList');if(l)l.innerHTML=extrasListHtml();
+  },
+  delExtra:function(el){
+    U.edit.extras=(U.edit.extras||[]).filter(function(x){return x.id!==el.dataset.id});
+    var l=$('#extrasList');if(l)l.innerHTML=extrasListHtml();
   },
   saveJob:function(){
     var name=$('#j_name').value.trim();if(!name)return bad('j_name');
-    var rate=num($('#j_rate').value);if(!(rate>0))return bad('j_rate');
-    var e=U.edit,obj={name:name,kind:e.kind,rate:rate,from:$('#j_from').value,to:$('#j_to').value};
+    var e=U.edit,obj;
+    if(e.kind==='custom'){
+      obj={name:name,kind:'custom',rate:0,from:'',to:'',presets:(U.edit.presets||[]).slice(),extras:(U.edit.extras||[]).slice()};
+    }else{
+      var rate=num($('#j_rate').value);if(!(rate>0))return bad('j_rate');
+      obj={name:name,kind:e.kind,rate:rate,from:$('#j_from').value,to:$('#j_to').value};
+    }
     if(e.id){
       var j=jobById(e.id);Object.assign(j,obj);
+      if(j.kind!=='custom'){delete j.presets;delete j.extras}
       S.shifts.forEach(function(s){if(s.jobId===j.id)s.jobName=name});
     }else S.jobs.push(Object.assign({id:uid()},obj));
     save();closeSheet();
@@ -993,27 +1112,53 @@ var ACT={
   /* смены */
   toggleShift:function(el){
     var s=S.shifts.find(function(x){return x.id===el.dataset.id});if(!s)return;
-    if(!s.done&&s.kind!=='fixed'&&!(num(s.paid)>0)){toast('Сначала укажи часы в смене');shiftSheet(s.id);return}
+    if(!s.done&&!(earned(s)>0)){toast('Сначала укажи сумму в смене');shiftSheet(s.id);return}
     s.done=!s.done;var first=s.done&&!s.xpGiven;if(first)s.xpGiven=true;
     save();render();buzz(10);
-    if(first)award(25+Math.round(num(s.paid)*4),'labor','Смена');
+    if(first)award(25+Math.round(earned(s)/300),'labor','Смена');
   },
   editShift:function(el){shiftSheet(el.dataset.id)},
   pickJob:function(el){
     var j=jobById(el.dataset.id);if(!j)return;
-    var e=U.edit;e.jobId=j.id;e.jobName=j.name;e.kind=j.kind;
-    document.querySelectorAll('#jobchips .chip').forEach(function(c){c.classList.toggle('on',c.dataset.id===j.id)});
-    $('#f_rate').value=j.rate;
-    if(!e.id){if(j.from)$('#f_from').value=j.from;if(j.to)$('#f_to').value=j.to}
-    kindUI();autoPaid();shiftCalc();
+    var e=U.edit;e.jobId=j.id;e.jobName=j.name;e.kind=j.kind;e.presetId=null;e.extraIds=[];e.totalManual=false;
+    var s=e.id?S.shifts.find(function(x){return x.id===e.id}):null;
+    var sh=document.querySelector('.sh');
+    if(sh)sh.innerHTML='<div class="grab"></div>'+shiftBodyHtml(s,j.id);
+    refreshTotalBadge();
+    if(e.kind==='custom')customCalc();else{autoPaid();shiftCalc()}
+  },
+  pickPreset:function(el){
+    var e=U.edit,id=el.dataset.id;e.presetId=(e.presetId===id)?null:id;
+    var c=$('#presetChips');if(c)c.innerHTML=presetChips(jobById(e.jobId),e.presetId);
+    customCalc();
+  },
+  pickExtra:function(el){
+    var e=U.edit,id=el.dataset.id,arr=e.extraIds||(e.extraIds=[]);
+    var i=arr.indexOf(id);if(i>-1)arr.splice(i,1);else arr.push(id);
+    var c=$('#extraChips');if(c)c.innerHTML=extraChips(jobById(e.jobId),arr);
+    customCalc();
+  },
+  totalAuto:function(){
+    if(!U.edit||!U.edit.totalManual)return;
+    U.edit.totalManual=false;
+    if(U.edit.kind==='custom')customCalc();else shiftCalc();
+    refreshTotalBadge();
   },
   tglDone:function(el){U.edit.done=!U.edit.done;el.classList.toggle('on',U.edit.done);buzz(8)},
   saveShift:function(){
     var e=U.edit,date=$('#f_date').value;if(!date)return bad('f_date');
-    var rate=num($('#f_rate').value);if(!(rate>0))return bad('f_rate');
-    var paid=num($('#f_paid').value);
-    if(e.done&&e.kind!=='fixed'&&!(paid>0))return bad('f_paid');
-    var obj={date:date,jobId:e.jobId,jobName:e.jobName,kind:e.kind,from:$('#f_from').value,to:$('#f_to').value,brk:num($('#f_brk').value)||0,paid:paid,rate:rate,note:$('#f_note').value.trim(),done:e.done};
+    if(e.kind!=='custom'){
+      var rate=num($('#f_rate').value);if(!(rate>0))return bad('f_rate');
+    }
+    var total=num($('#f_total').value);
+    if(e.done&&!(total>0))return bad('f_total');
+    var obj={date:date,jobId:e.jobId,jobName:e.jobName,kind:e.kind,note:$('#f_note').value.trim(),done:e.done,total:total,totalManual:!!e.totalManual};
+    if(e.kind==='custom'){
+      obj.from=($('#f_from')&&$('#f_from').value)||'';obj.to=($('#f_to')&&$('#f_to').value)||'';
+      obj.presetId=e.presetId||null;obj.extraIds=(e.extraIds||[]).slice();
+    }else{
+      obj.from=$('#f_from').value;obj.to=$('#f_to').value;obj.brk=num($('#f_brk').value)||0;obj.paid=num($('#f_paid').value);obj.rate=num($('#f_rate').value);
+    }
     var s;
     if(e.id){s=S.shifts.find(function(x){return x.id===e.id});Object.assign(s,obj)}
     else{s=Object.assign({id:uid()},obj);S.shifts.push(s)}
@@ -1021,7 +1166,7 @@ var ACT={
     save();closeSheet();
     U.sel=date;U.month=firstOf(parseYmd(date));U.smonth=firstOf(parseYmd(date));
     render();
-    if(first)award(25+Math.round(num(s.paid)*4),'labor','Смена');
+    if(first)award(25+Math.round(earned(s)/300),'labor','Смена');
   },
   delShift:function(el){confirm2(el,'Точно удалить?',function(){S.shifts=S.shifts.filter(function(x){return x.id!==U.edit.id});save();closeSheet();render()})},
 
@@ -1265,6 +1410,7 @@ document.addEventListener('input',function(e){
   if(L==='paid'){U.edit.pm=true;shiftCalc()}
   else if(L==='shift'){autoPaid();shiftCalc()}
   else if(L==='rate'){shiftCalc()}
+  else if(L==='total'){if(U.edit){U.edit.totalManual=true;refreshTotalBadge()}}
   else if(L==='note'){
     var n=S.notes.find(function(x){return x.id===U.edit.id});
     if(n){n.title=$('#n_title').value;n.text=$('#n_text').value;n.upd=Date.now();save()}
