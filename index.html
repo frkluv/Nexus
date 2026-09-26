@@ -722,18 +722,19 @@ function vShifts(){
   var m=U.smonth,k=mkey(m);
   var list=S.shifts.filter(function(s){return s.date.indexOf(k)===0}).sort(cmpShift);
   var done=list.filter(function(s){return s.done}),plan=list.filter(function(s){return !s.done});
-  var got=sum(done.map(earned)),soon=sum(plan.map(earned)),hh=sum(done.map(function(s){return num(s.paid)}));
+  var earnedTotal=sum(done.map(earned)),soon=sum(plan.map(earned)),hh=sum(done.map(function(s){return num(s.paid)}));
+  var got=sum(shiftTx().filter(function(t){return t.date.indexOf(k)===0}).map(function(t){return t.amount}));
   var un=unpaidShifts(),unSum=sum(un.map(earned));
   var by={};
   done.forEach(function(s){var o=by[s.jobName]||(by[s.jobName]={h:0,m:0});o.h+=num(s.paid);o.m+=earned(s)});
   var byHtml=Object.keys(by).map(function(n){return '<div class="jr"><span>'+esc(n)+'</span><span>'+hrs(by[n].h)+' · '+money(by[n].m)+'</span></div>'}).join('');
   var jobsHtml=S.jobs.map(function(j){return '<button class="job" data-act="editJob" data-id="'+j.id+'"'+(j.color?' style="border-color:'+j.color+'"':'')+'><div class="t">'+(j.emoji?j.emoji+' ':'')+esc(j.name)+'</div><div class="s">'+jobSubtitle(j)+'</div></button>'}).join('');
   return '<div class="card">'+mhead('smonth',MON[m.getMonth()]+' '+m.getFullYear())
-    +'<div class="lbl">заработано</div><div class="big" data-cnt="'+r2(got)+'">0 ₽</div>'
-    +'<div class="two2"><div><div class="lbl">оплачено часов</div><div class="v">'+nf.format(r2(hh))+'</div></div><div><div class="lbl">смен отработано</div><div class="v">'+done.length+'</div></div></div>'
+    +'<div class="lbl">получено</div><div class="big" data-cnt="'+r2(got)+'">0 ₽</div>'
+    +'<div class="two2"><div><div class="lbl">заработано за месяц</div><div class="v">'+money(earnedTotal)+'</div></div><div><div class="lbl">смен отработано</div><div class="v">'+done.length+'</div></div></div>'
     +(plan.length?'<div class="s" style="margin-top:12px">Впереди '+plan.length+' смен, это ещё ≈ '+money(soon)+'</div>':'')
     +(byHtml?'<div style="margin-top:14px">'+byHtml+'</div>':'')+'</div>'
-    +(un.length?'<div class="card" style="margin-top:10px"><div class="lbl">к выплате</div><div class="v pos" style="font-size:20px;margin-top:4px">'+money(unSum)+' · '+un.length+' смен</div><div class="btns" style="margin-top:12px"><button class="btn pri" data-act="newPayday">Отметить получку</button></div></div>':'')
+    +(un.length?'<div class="card" style="margin-top:10px"><div class="lbl">к выплате</div><div class="v pos" style="font-size:20px;margin-top:4px">'+money(unSum)+' · '+un.length+' смен</div><div class="s" style="margin-top:4px">отработано, но деньги ещё не отмечены полученными</div><div class="btns" style="margin-top:12px"><button class="btn pri" data-act="newPayday">Отметить получку</button></div></div>':'')
     +'<div class="sec"><span class="lbl">работы и ставки</span></div>'
     +'<div class="jobs">'+jobsHtml+'<button class="job add" data-act="newJob" aria-label="Новая работа">'+ic('plus')+'</button></div>'
     +'<div class="sec"><span class="lbl">смены месяца</span></div>'
